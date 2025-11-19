@@ -23,6 +23,7 @@ Templates used in this study:
 - `aseg_pt5_rim_layer_equivol_6,7bins.nii.gz` — Language ROIs downloaded from https://www.evlab.mit.edu/resources-all/download-parcels.
 - `Schaefer2018_400Parcels_17Networks_order_FSLMNI152_1mm.nii.gz` — Schaefer 400 parcellations downloaded from https://github.com/ThomasYeoLab/CBIG/tree/master/stable_projects/brain_parcellation/Schaefer2018_LocalGlobal
 - `atlas-THOMAS_space-MNI152NLin2009cAsym_res-01.nii.gz` - THOMAS thalamus parcellations downloaded from https://www.sciencedirect.com/science/article/pii/S1053811919301946?via%3Dihub
+
 Global cortical hierarchy map used in this study:
 - `Anterior_Posterior_Axis_Ranks.csv` — Anterior-Posterior axis.
 - `Sensorimotor_Association_Axis_AverageRanks.csv` — Sensory-Association axis downloaded from https://netneurolab.github.io/neuromaps/user_guide/annotations.html.
