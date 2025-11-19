@@ -1,7 +1,7 @@
-# Humans Have a Longer Period of Cortical Maturation Across Depth and Hierarchy Than Macaques
+# Cascading periods of language-related brain plasticity across early childhood
 
 ## About
-This repository contains the code and data supporting the study *"Humans Have a Longer Period of Cortical Maturation Across Depth and Hierarchy Than Macaques,"* published in *PLOS Biology*.
+This repository contains the code and data supporting the study *"Cascading periods of language-related brain plasticity across early childhood"* submitted on *BioArxiv*.
 
 ## Code
 
