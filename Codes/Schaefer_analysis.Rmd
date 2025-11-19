@@ -1,0 +1,506 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(WVPlots)
+library(clue)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggExtra)
+library(cowplot)
+library(patchwork)
+library(car)
+theme_set(theme_cowplot())
+library(corrplot)
+library(visreg)
+library(ggcorrplot)
+library(ggseg3d)
+library(ggseg)
+library(scales)
+library(ggsegSchaefer)
+library(psych)
+library(nlme)
+library(mgcv)
+library(multiverse)
+library(gratia)
+library(tidyverse)
+load(file="../Data/Template/schaefer17_400_3d.RData")
+lh_label <- schaefer17_400_3d$ggseg_3d[[1]]['region'][2:201,1:1]
+rh_label <- schaefer17_400_3d$ggseg_3d[[2]]['region'][2:201,1:1]
+label <- rbind(lh_label, rh_label)
+hemi <- c(rep('left', 200), rep('right', 200))
+label <- cbind(label, hemi)
+SA <- read.csv('../Data/Sensorimotor_Association_Axis_AverageRanks.csv')
+AP <- read.csv('../Data/Anterior_Posterior_Axis_Ranks.csv')
+SA$AP <- AP[['AP']]
+SA$language <- AP[["language"]]
+SAlanguage <- read.csv('../Derivatives/sa_language.csv')
+```
+
+```{r setup, include=FALSE}
+SAcombine <- cbind(SA, label)
+plot <- ggseg(SAcombine, atlas = schaefer17_400, mapping = aes(fill = language), position = "stacked") + scale_fill_gradientn(colours = c('blue', 'gray', 'red'), name = bquote(fasciculus) , values = scales::rescale(c(-8,5, 11)), limit=c(-8.5, 11)) + theme_brain(text.size = 16)
+ggsave('AP_language.eps', plot = plot, width = 6, height = 4, dpi = 300, device='pdf')
+language <- read.csv('../Derivatives/language_hemisphere.csv')
+language <- cbind(language, label)
+ggseg(language, atlas = schaefer17_400, mapping = aes(fill = language_hemisphere), position = "stacked") +
+    scale_fill_gradientn(colours = c('yellow', 'purple'), name = bquote(fasciculus), values = scales::rescale(c(1,200)), limit=c(1,200)) + theme_brain(text.size = 16)
+  ggsave(filename = "SA_language.eps", device = "pdf", dpi = 500)
+ggseg(language, atlas = schaefer17_400, mapping = aes(fill = language_hemisphere_bin), position = "stacked") +
+    scale_fill_gradientn(colours = c('yellow', 'blue', 'skyblue', 'lightgreen', 'khaki','orange', 'red'), name = bquote(fasciculus), values = scales::rescale(c(1,7)), limit=c(1,7)) + theme_brain(text.size = 16)
+  ggsave(filename = "language_bin.eps", device = "pdf", dpi = 500)
+```
+
+```{r setup, include=FALSE}
+# BCP Language Development
+for (par in c('mcg_vc_totcom', 'mcg_vc_totpr')){
+    test <- read.delim('../Data/BCP/mci_words_gestures01.txt')
+    test <- test[2:dim(test)[1], ]
+    test$interview_age <- as.integer(test$interview_age)
+    test$interview_age <- test$interview_age/12
+    test <- test %>% drop_na(interview_age)
+    test$target <- test[[par]]
+    test$target <- as.integer(test$target)
+    test$src_subject_id <- as.factor(test$src_subject_id)
+    test <- test %>% drop_na(target)
+    ymin <- min(test$target)
+    ymax <- max(test$target)
+    gam_resid <- residuals(gam(target ~ sex + site + s(src_subject_id, bs = 're'), data = test))
+    test$age_resid <- gam_resid
+    model <- gam(age_resid ~ s(interview_age, k=k), data = test)
+    s <- summary(model)
+    pval <- signif(s$s.table[1,4], 3)  # p-value of s(timepoint)
+    rsq <- signif(s$s.table[1,3], 3)
+    print(c(rsq, pval))
+    gam.model <- gam(target ~ s(interview_age, k=k) + sex + site + s(src_subject_id, bs = 're'), data = test)
+    derv <- derivatives(gam.model, unconditional = FALSE, interval = "simultaneous")
+    increasing.range <- derv[['interview_age']][derv[['.lower_ci']] > 0][derv[['.upper_ci']] > 0]
+    if (length(increasing.range) > 0) {
+      print(max(increasing.range, na.rm=TRUE))
+    } else {
+      print("No increasing range found")
+    }
+    pred <- predict(gam.model, se.fit = TRUE)
+    test$prediction <- pred$fit
+    p <- ggplot(data = test, aes(x = interview_age, y = prediction)) + 
+      geom_line(aes(x = interview_age, y = target, group = src_subject_id), color = "black") +
+      geom_point(aes(y = target), color = "black") + ylim(ymin, ymax) +
+      geom_smooth(method = "gam", formula = y ~ s(x, k=k), se=TRUE, alpha=1, level=0.999) +
+      geom_ribbon(aes(ymin=pred$fit-1.96*pred$se.fit,
+                   ymax=pred$fit+1.96*pred$se.fit), alpha = 1, fill = 'gray') +
+      geom_vline(xintercept = ifelse(length(increasing.range) > 0, min(increasing.range, na.rm=TRUE), NA), linetype = "dashed") + 
+      theme(legend.position = 'none')
+    ggsave(paste0(par,'.eps'), plot = p, 
+           width = 6, height = 4, units = 'in', dpi = 300)
+}  
+```
+
+```{r setup, include=FALSE}
+# BCP Hurst Development
+dataset <- list('BCP_language_word') 
+saranks <- c(164, 145, 74, 141, 123, 111, 165, 145, 102, 143, 128, 89)
+colfunc <- c('#17499D', '#AAD3E0', '#6AB82D', 'khaki', '#F4A116', '#E71F19','#17499D', '#AAD3E0', '#6AB82D', 'khaki', '#F4A116', '#E71F19')
+test <- read.csv(paste0('../Derivatives/BCP_language_word.csv'))
+test$sub_id <- as.factor(test$sub_id)
+k <- 3
+test <- test[test$Motion<0.5, ]
+print(dim(test))
+results <- data.frame(
+  dataset = character(),
+  par = integer(),
+  rsq = numeric(),
+  pval = numeric(),
+  stars = character(),
+  stringsAsFactors = FALSE
+  )
+for (par in 0:5){
+  col <- grep(paste0("^X", par, "\\b"), colnames(test), value = TRUE)
+  allcol <- test %>% dplyr::select(all_of(col)) %>% 
+    pivot_longer(cols = everything(), names_to = "Region", values_to = "age")
+  allcol <- cbind(allcol, 
+              Age = rep(test$Age, each = length(col)),  
+              Sex = rep(test$Sex, each = length(col)),  
+              Site = rep(test$site, each = length(col)),  
+              Motion = rep(test$Motion, each = length(col)),
+              Subject = rep(test$sub_id, each = length(col)))
+  allcol$age <- scale(allcol$age)
+  lm_resid <- residuals(gam(age ~ Sex + Site + Motion + s(Subject, bs = "re"), data = allcol))
+  allcol$age_resid <- lm_resid
+  avg_points <- allcol %>%
+    group_by(Subject, Age, Sex, Site, Motion) %>%
+    summarize(mean_age = mean(age_resid, na.rm = TRUE), .groups = "drop")
+  model <- gam(age_resid ~ s(Age, k=k), data = allcol)
+  s <- summary(model)
+  derv <- derivatives(model, unconditional = FALSE, interval = "simultaneous")
+  increasing.range <- derv[['Age']][derv[['.lower_ci']] > 0][derv[['.upper_ci']] > 0]
+  if (length(increasing.range) > 0) {
+    print(c(min(increasing.range, na.rm=TRUE), max(increasing.range, na.rm=TRUE)))
+  } else {
+    print("No increasing range found")
+  }
+  pred <- predict(model, se.fit = TRUE)
+  allcol$prediction <- pred$fit
+  allcol$ymin <- pred$fit - 1.96 * pred$se.fit
+  allcol$ymax <- pred$fit + 1.96 * pred$se.fit
+  pval <- signif(s$s.table[1,4], 3)  # p-value of s(timepoint)
+  rsq <- signif(s$s.table[1,3], 3)#signif(s$r.sq, 3) #
+  print(c(pval, rsq))
+  star <- if (pval < 0.001) {
+    "***"
+  } else if (pval < 0.01) {
+    "**"
+  } else if (pval < 0.05) {
+    "*"
+  } else {
+    ""
+  }
+  results <- rbind(results, data.frame(dataset = t, par = par, rsq = rsq, pval = pval, stars = star))
+  if (par < 7){
+    p <- ggplot(data = allcol, aes(x = Age, y = prediction)) + 
+      geom_line(data = avg_points, aes(x = Age, y = mean_age, group = Subject), color = colfunc[par + 1]) +
+     geom_point(data = avg_points, aes(x = Age, y = mean_age), color = colfunc[par + 1]) +
+      annotate("text", x = min(allcol$Age, na.rm=TRUE), y = 1.8, 
+           label = paste0("p = ", pval, ", R² = ", rsq), hjust = 0, size = 4) +
+      geom_ribbon(aes(ymin=pred$fit-1.96*pred$se.fit,
+                 ymax=pred$fit+1.96*pred$se.fit), alpha = 1, fill =colfunc[par+1]) + ylim(-0.5, 0.5) +
+    geom_smooth(method = "gam", formula = y ~ s(x, k=k), se=FALSE, alpha=1, level=0.999, color=colfunc[par+1]) +  geom_vline(xintercept = ifelse(length(increasing.range) > 0, min(increasing.range, na.rm=TRUE), NA), color=colfunc[par+1]) +theme(legend.position = 'none')
+    ggsave(paste0(par, t, '_hurst.eps'), plot = p, width = 6, height = 4, units = 'in', dpi = 300)}
+  if (par > 6) {
+    p <- ggplot(data = allcol, aes(x = Age, y = prediction)) + 
+    #geom_point(aes(x = Age, y = age), color = colfunc[par+1]) +
+        annotate("text", x = min(allcol$Age, na.rm=TRUE), y = 1.8, 
+           label = paste0("p = ", pval, ", R² = ", rsq), hjust = 0, size = 4) +
+      geom_ribbon(aes(ymin=pred$fit-1.96*pred$se.fit,
+                 ymax=pred$fit+1.96*pred$se.fit), alpha = 1, fill = 'gray') +
+    geom_smooth(method = "gam", formula = y ~ s(x, k=k), se=FALSE, alpha=1, level=0.999, color=colfunc[par+1], linetype = "dashed") + geom_vline(xintercept = ifelse(length(increasing.range) > 0, min(increasing.range, na.rm=TRUE), NA), color='gray') +
+    theme(legend.position = 'none')
+    ggsave(paste0(par, t, '_hurst.eps'), plot = p, 
+     width = 6, height = 4, units = 'in', dpi = 300)}
+}
+colfunc <- c('#17499D', '#AAD3E0', '#6AB82D', 'khaki', '#F4A116', '#E71F19')
+names(colfunc) <- as.character(unique(results$par))
+p <- ggplot(results, aes(x = factor(par), y = rsq, fill = factor(par))) +
+  geom_bar(stat = "identity", color = "black", show.legend = FALSE) +
+  geom_text(aes(label = stars), vjust = -0.5, size = 5) +
+  scale_fill_manual(values = colfunc) #+
+  #ylim(0, max(results$rsq, na.rm = TRUE) + 0.01) 
+ggsave(paste0(par, t, '_ageeffect.eps'), plot = p, width = 6, height = 4, units = 'in', dpi = 300)
+results$language_hemisphere_bin <- results$par + 2
+language_merged <- language %>%
+  left_join(results, by = "language_hemisphere_bin")
+#language_merged$color[is.na(language_merged$color)] <- "#808080"
+ggseg(language_merged, atlas = schaefer17_400, mapping = aes(fill = rsq), position = "stacked") +
+  scale_fill_gradientn(
+    colours = c("#DEEBF7", "#08306B"),
+    na.value = "#808080",  # gray for NA values
+    name = bquote(R^2)
+  ) + theme_brain(text.size = 16)
+  ggsave(filename = paste0(par, t, "language_bin.eps"), device = "pdf", dpi = 500)
+results <- results %>% 
+  mutate(
+    p_adj  = p.adjust(pval, method = "fdr"),      # BH‑adjusted p
+    stars  = case_when(                           # redefine stars with p_adj
+      p_adj < 0.001 ~ "***",
+      p_adj < 0.01  ~ "**",
+      p_adj < 0.05  ~ "*",
+      TRUE          ~ ""
+    )
+  )
+```
+
+```{r setup, include=FALSE}
+age_H <- test
+schaefer_H <- data.frame(age=1:62)
+pvalue <- data.frame(age=1:62)
+for (n in 1:62){
+  col <- colnames(age_H)[n]
+  lm_resid <- residuals(gam(age_H[[col]] ~ Sex + site + Motion + s(sub_id, bs = "re"), data = age_H))
+  age_H$age_resid <- lm_resid
+  model <- gam(age_resid ~ s(Age, k=k), data = age_H)
+  s <- summary(model)
+  pvalue$age[n] <- signif(s$s.table[1,4], 3)  # p-value of s(timepoint)
+  schaefer_H$age[n] <- signif(s$s.table[1,3], 3)#signif(s$r.sq, 3) #
+}
+schaefer_H <- cbind(schaefer_H, SAlanguage)
+model <- lm(schaefer_H[['age']] ~ SA, data = schaefer_H)
+  pred <- predict(model, se.fit=T)
+  ggplot(data = schaefer_H, mapping = aes(x = SA, y = age)) +
+    geom_point(aes(color = schaefer_H[['SA']])) +
+    geom_ribbon(aes(ymin=pred$fit-1.96*pred$se.fit,
+                     ymax=pred$fit+1.96*pred$se.fit), alpha = 1, fill = 'gray') +
+    geom_smooth(method="lm", formula= y~x) + scale_color_gradient(low='yellow', high='purple') +
+    geom_line(size=.3, alpha = .8)  + theme(legend.position='none')
+  ggsave(file=paste0('BCP_SA.eps'), width=6, height=4.1, dpi=300)
+  print(summary(model))
+model <- lm(schaefer_H[['age']] ~ AP, data = schaefer_H)
+  pred <- predict(model, se.fit=T)
+  ggplot(data = schaefer_H, mapping = aes(x = AP, y = age)) +
+    geom_point(aes(color = schaefer_H[['AP']])) + 
+    geom_ribbon(aes(ymin=pred$fit-1.96*pred$se.fit,
+                     ymax=pred$fit+1.96*pred$se.fit), alpha = 1, fill = 'gray') +
+    geom_smooth(method="lm", formula= y~x) + scale_color_gradient(low='red', high='blue') +
+    geom_line(size=.3, alpha = .8)  + theme(legend.position='none')
+  ggsave(file=paste0('BCP_AP.eps'), width=6, height=4.1, dpi=300)
+  print(summary(model))
+schaefer_H_all <- schaefer_H
+```
+
+```{r setup, include=FALSE}
+# BCP multiverse
+results <- list()
+age_gaps <- c(0.5, 1, 2)
+covariate_options <- c(TRUE, FALSE)
+data_raw <- read.csv(paste0('../Derivatives/BCP_language_word.csv'))
+# Remove bilingual
+data_raw <- data_raw[!is.na(data_raw$mcg_vc_totcom) & 
+                       !is.na(data_raw$income_num) & 
+                       !is.na(data_raw$education) &
+                       !is.na(data_raw$bilingual_num),  ]
+data_raw <- data_raw[data_raw$bilingual_num>90, ]
+data_raw <- data_raw[!duplicated(data_raw), ]
+data_raw$src_subject_id <- as.factor((data_raw$src_subject_id))
+for (gap in age_gaps) {
+  for (include_covariates in covariate_options) {
+    
+    # Filter based on age gap
+    test <- data_raw[data_raw$age_gap < gap, ]
+    print(c(mean(test$interview_age), sd(test$interview_age)))
+    print(c(dim(test), length(unique(test$src_subject_id.1))))
+
+    # Define covariates
+    covariates <- c("Sex", "Motion", "bilingual_num") #"site", 
+    if (include_covariates) covariates <- c(covariates, "income_num", "education")
+    
+    # Create model formula
+    formula_str <- paste0("age ~ Age * Word + ", paste(covariates, collapse = " + "), " + s(src_subject_id, bs='re')")
+
+    for (par in c(0,1,2,3,4,5)) {
+      for (word in c('mcg_vc_totcom', 'mcg_vc_totpr')) {
+        
+        col <- grep(paste0("^X", par, "\\b"), colnames(test), value = TRUE)
+        test$age <- rowMeans(test[, col])
+        test$Word <- test[[word]]
+        
+        # Fit GAM
+        model1 <- gam(as.formula(formula_str), data = test, method = 'REML')
+        sm <- summary(model1)
+        pt <- sm$p.table
+        row_word <- "Word"
+        row_age <- "Age:Word"
+        results[[length(results) + 1]] <- data.frame(
+          Dataset         = t,
+          AgeGap          = gap,
+          WithCovariates  = include_covariates,
+          Region          = paste0("X", par),
+          WordType        = word,
+          #Param_Estimate  = pt[row_word, "Estimate"],
+          Param_Estimate  = pt[row_word, "t value"],
+          Param_pvalue    = pt[row_word, "Pr(>|t|)"],
+          #Smooth_Estimate = pt[row_age, "Estimate"],
+          Smooth_Estimate = pt[row_age, "t value"],
+          Smooth_pvalue   = pt[row_age, "Pr(>|t|)"],
+          row.names = NULL
+        )
+      }
+    }
+  }
+}
+# Combine all results and adjust p-values
+final_results <- bind_rows(results) %>%
+  group_by(WordType) %>%
+  mutate(
+    Param_pvalue_fdr  = p.adjust(Param_pvalue, method = "fdr"),
+    Smooth_pvalue_fdr = p.adjust(Smooth_pvalue, method = "fdr")
+  ) %>%
+  ungroup()
+write.csv(final_results, "multiverse_interaction_results.csv", row.names = FALSE)
+```
+
+```{r setup, include=FALSE}
+# Sort by Smooth_Estimate
+final_results <- final_results %>%
+  arrange(Smooth_Estimate) %>%
+  mutate(
+    model_id = row_number(),
+    is_significant = Smooth_pvalue < 0.05
+  )
+# Select relevant columns and pivot long
+spec_grid <- final_results %>%
+  select(model_id, AgeGap, WithCovariates, Region, WordType) %>%
+  mutate(across(-model_id, as.character)) %>%
+  pivot_longer(cols = -model_id, names_to = "spec_type", values_to = "spec_choice")
+region_colors <- c('#17499D', '#AAD3E0', '#95CB88',  'khaki','orange', 'red')
+# Create a color vector for all possible spec choices in other specs
+other_colors <- RColorBrewer::brewer.pal(8, "Set2")
+# Plot grid with custom colors for Region only
+grid_plot <- ggplot(spec_grid, aes(x = model_id, y = spec_type, fill = spec_choice)) +
+  geom_tile(color = "white") +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    legend.position = "bottom"
+  ) +
+  labs(x = NULL, y = NULL, fill = "Specification") +
+  # Use different fill scales based on spec_type
+  scale_fill_manual(
+    values = c(
+      # Map region names to your colors
+      'X0' = region_colors[1],
+      'X1' = region_colors[2],
+      'X2' = region_colors[3],
+      'X3' = region_colors[4],
+      'X4' = region_colors[5],
+      'X5' = region_colors[6],
+      # For other spec choices, assign distinct colors (add more if needed)
+      '0.5' = other_colors[1],
+      '1' = other_colors[2],
+      '2' = other_colors[3],
+      'TRUE' = other_colors[4],
+      'FALSE' = other_colors[5],
+      'mcg_vc_totcom' = other_colors[6],
+      'mcg_vc_totpr' = other_colors[7]
+    ),
+    na.value = "grey80"
+  )
+
+# Your spec_curve_plot stays the same
+spec_curve_plot <- ggplot(final_results, aes(x = model_id, y = Smooth_Estimate, color = is_significant)) +
+  geom_point(size = 2) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  scale_color_manual(values = c("TRUE" = "red", "FALSE" = "black")) +
+  labs(
+    title = "Specification Curve",
+    x = NULL,
+    y = "Smooth Estimate",
+    color = "FDR p < 0.05"
+  ) 
+
+# Combine plots
+p <- (spec_curve_plot / grid_plot) + patchwork::plot_layout(heights = c(2, 1))
+ggsave("multiverse.eps",plot = p,width  = 10,height = 6,units  = "in",dpi    = 300)
+```
+
+```{r setup, include=FALSE}
+# HCPD Developmental trajectory
+saranks <- c(164, 145, 74, 141, 123, 111, 165, 145, 102, 143, 128, 89)
+colfunc <- c('#17499D', '#AAD3E0', '#6AB82D', 'khaki', '#F4A116', '#E71F19','#17499D', '#AAD3E0', '#6AB82D', 'khaki', '#F4A116', '#E71F19')
+test <- read.csv(paste0('../Derivatives/HCPD_language.csv'))
+test <- test %>% drop_na(c(Age, Sex, Motion))
+k <- 4
+test <- test[test$Age<14, ]
+test <- test[test$Motion < 1, ]
+results <- data.frame(
+  dataset = character(),
+  par = integer(),
+  rsq = numeric(),
+  pval = numeric(),
+  stars = character(),
+  stringsAsFactors = FALSE
+  )
+for (par in 0:5){
+  col <- grep(paste0("^X", par, "\\b"), colnames(test), value = TRUE)
+  allcol <- test %>% dplyr::select(all_of(col)) %>% 
+    pivot_longer(cols = everything(), names_to = "Region", values_to = "age")
+  allcol <- cbind(allcol, 
+              Age = rep(test$Age, each = length(col)),  
+              Sex = rep(test$Sex, each = length(col)),  
+              Motion = rep(test$Motion, each = length(col)))
+  allcol$age <- scale(allcol$age)
+  lm_resid <- residuals(lm(age ~ Sex + Motion, data = allcol))
+  allcol$age_resid <- lm_resid
+  avg_points <- allcol %>%
+    group_by(Age, Sex, Motion) %>%
+    summarize(mean_age = mean(age_resid, na.rm = TRUE), .groups = "drop")
+  model <- gam(age_resid ~ s(Age, k=k), data = allcol)
+  s <- summary(model)
+  pval <- signif(s$s.table[1,4], 3)  # p-value of s(timepoint)
+  rsq <- signif(s$s.table[1,3], 3)
+  print(c(rsq, pval))
+  derv <- derivatives(model, unconditional = FALSE, interval = "simultaneous")
+  increasing.range <- derv[['Age']][derv[['.lower_ci']] > 0][derv[['.upper_ci']] > 0]
+  print(max(increasing.range, na.rm=TRUE))
+  pred <- predict(model, se.fit = TRUE)
+  allcol$prediction <- pred$fit
+  allcol$ymin <- pred$fit - 1.96 * pred$se.fit
+  allcol$ymax <- pred$fit + 1.96 * pred$se.fit
+  avg_data <- allcol %>%
+    group_by(Age, Sex, Motion) %>%
+    summarize(mean_age = mean(age, na.rm = TRUE), .groups = "drop")
+  #avgmodel <- gam(mean_age ~ s(Age, k = k) + Sex + Motion, data = avg_data)
+  #s <- summary(avgmodel)
+  results <- rbind(results, data.frame(dataset = t, par = par, rsq = rsq, pval = pval))
+  p <- ggplot(data = allcol, aes(x = Age, y = prediction)) + 
+     geom_point(data = avg_points, aes(x = Age, y = mean_age), color = colfunc[par + 1]) +
+      annotate("text", x = min(allcol$Age, na.rm=TRUE), y = 1.8, 
+           label = paste0("p = ", pval, ", R² = ", rsq), hjust = 0, size = 4) +
+      geom_ribbon(aes(ymin=pred$fit-1.96*pred$se.fit,
+                 ymax=pred$fit+1.96*pred$se.fit), alpha = 1, fill =colfunc[par+1]) + ylim(-1.5, 1.5) + geom_smooth(method = "gam", formula = y ~ s(x, k=k), se=FALSE, alpha=1, level=0.999, color=colfunc[par+1]) +  geom_vline(xintercept = ifelse(length(increasing.range) > 0, max(increasing.range, na.rm=TRUE), NA), color=colfunc[par+1]) +theme(legend.position = 'none')
+    ggsave(paste0(par, t, '_hurst.eps'), plot = p, width = 6, height = 4, units = 'in', dpi = 300)
+  }
+  colfunc <- c('#17499D', '#AAD3E0', '#6AB82D', '#95CB88', '#F4A116', '#E71F19')
+  names(colfunc) <- as.character(unique(results$par))
+  results <- results %>% 
+    mutate(
+      p_adj  = p.adjust(pval, method = "fdr"),      # BH‑adjusted p
+      stars  = case_when(                           # redefine stars with p_adj
+        p_adj < 0.001 ~ "***",
+        p_adj < 0.01  ~ "**",
+        p_adj < 0.05  ~ "*",
+        TRUE          ~ ""
+      ))
+  p <- ggplot(results, aes(x = factor(par), y = rsq, fill = factor(par))) +
+  geom_bar(stat = "identity", color = "black", show.legend = FALSE) +
+  geom_text(aes(label = stars), vjust = -0.5, size = 5) +
+  scale_fill_manual(values = colfunc) #+
+  #ylim(0, max(results$rsq, na.rm = TRUE) + 0.01)
+  ggsave(paste0(par, t, '_ageeffect.eps'), plot = p, width = 6, height = 4, units = 'in', dpi = 300)
+  results$language_hemisphere_bin <- results$par + 2
+  language_merged <- language %>%
+    left_join(results, by = "language_hemisphere_bin")
+  #language_merged$color[is.na(language_merged$color)] <- "#808080"
+  ggseg(language_merged, atlas = schaefer17_400, mapping = aes(fill = rsq), position = "stacked") +
+    scale_fill_gradientn(
+      colours = c("#DEEBF7","#08306B"),
+      na.value = "#808080",  # gray for NA values
+      name = bquote(R^2)
+    ) + theme_brain(text.size = 16)
+    ggsave(filename = paste0(par, t, "language_bin.eps"), device = "pdf", dpi = 500)
+```
+
+```{r setup, include=FALSE}    
+age_H <- test
+schaefer_H <- data.frame(age=1:62)
+pvalue <- data.frame(age=1:62)
+increase <- data.frame(age=1:62)
+for (n in 1:62){
+  col <- colnames(age_H)[n]
+  lm_resid <- residuals(gam(age_H[[col]] ~ Sex + Motion, data = age_H))
+  age_H$age_resid <- lm_resid
+  model <- gam(age_resid ~ s(Age, k=k), data = age_H)
+  s <- summary(model)
+  pvalue$age[n] <- signif(s$s.table[1,4], 3)
+  schaefer_H$age[n] <- signif(s$s.table[1,3], 3)
+}
+schaefer_H <- cbind(schaefer_H, SAlanguage)
+model <- lm(schaefer_H[['age']] ~ SA, data = schaefer_H)
+pred <- predict(model, se.fit=T)
+ggplot(data = schaefer_H, mapping = aes(x = SA, y = age)) +
+  geom_point(aes(color = schaefer_H[['SA']])) +  
+  geom_ribbon(aes(ymin=pred$fit-1.96*pred$se.fit,
+                   ymax=pred$fit+1.96*pred$se.fit), alpha = 1, fill = 'gray') + #ylim(-0.02, 0.05) +
+  geom_smooth(method="lm", formula= y~x) + scale_color_gradient(low='yellow', high='purple') +
+  geom_line(size=.3, alpha = .8)  + theme(legend.position='none')
+ggsave(file=paste0(paste0(t, '_SA.eps')), width=6, height=4.1, dpi=300)
+print(summary(model))
+model <- lm(schaefer_H[['age']] ~ AP, data = schaefer_H)
+pred <- predict(model, se.fit=T)
+ggplot(data = schaefer_H, mapping = aes(x = AP, y = age)) +
+  geom_point(aes(color = schaefer_H[['AP']])) + 
+  geom_ribbon(aes(ymin=pred$fit-1.96*pred$se.fit,
+                   ymax=pred$fit+1.96*pred$se.fit), alpha = 1, fill = 'gray') +# ylim(-0.02, 0.05) +
+  geom_smooth(method="lm", formula= y~x) + scale_color_gradient(low='red', high='blue') +
+  geom_line(size=.3, alpha = .8)  + theme(legend.position='none')
+ggsave(file=paste0(paste0(t, '_AP.eps')), width=6, height=4.1, dpi=300)
+print(summary(model))
+schaefer_H_all <- cbind(schaefer_H_all, schaefer_H)
+write.csv(schaefer_H_all, '../derivatives/ageeffect_combined.csv')
+```
