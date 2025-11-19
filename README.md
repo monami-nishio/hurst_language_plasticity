@@ -5,29 +5,11 @@ This repository contains the code and data supporting the study *"Cascading peri
 
 ## Code
 
-**To reproduce Figure 1**  
-- `RegionwiseT1T2.Rmd` — Calculates and plots the region-wise T1w/T2w distribution for both macaques and humans.  
-- `DepthT1T2.py` — Calculates and plots the depth-wise T1w/T2w distribution for both macaques and humans.  
-
-**To reproduce Figure 2**  
-- `macaque/human_ageeffect.Rmd` — Calculates and plots the developmental trajectory of T1w/T2w in macaques and humans. Also contains the subsampling code to replicate Figure S5.  
+**To reproduce Figure 1,2,4**  
+- `Schaefer_analysis.Rmd`
 
 **To reproduce Figure 3**  
-- `macaque/human_ageeffect_7layer.Rmd` — Calculates and plots the developmental trajectory across 7 depth bins of T1w/T2w in macaques and humans.  
-
-**To reproduce Supplementary Figure 1**  
-- `geodesic_SA.Rmd` — Plots the correlation between geodesic distance and the sensory-association axis for both macaques and humans.  
-
-**To reproduce Supplementary Figure 2**  
-- `RegionwiseMBP.Rmd` — Calculates and plots the region-wise MBP distribution in macaques.  
-- `DepthMBP.py` — Calculates and plots the depth-wise MBP distribution in macaques.  
-
-**To reproduce Supplementary Figure 3**  
-- `R1.rmd` — Calculates and plots the regional distribution of R1 and its correlation with T1w/T2w in humans.  
-
-**To reproduce Supplementary Figure 4**  
-- `human_ageeffect.Rmd` — Calculates and plots the developmental trajectory in humans using geodesic distance as the ordering of the parcellation.  
-- `human_ageeffect_7layer.Rmd` — Calculates and plots the developmental trajectory across 7 depth bins of T1w/T2w in macaques and humans using geodesic distance as the ordering of the parcellation.  
+- `Thalamus_analysis.Rmd`
 
 ## Scripts
 - `macaque/human_calculate_geodesic_distance.py` — Calculates geodesic distance for each species.  
