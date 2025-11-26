@@ -5,9 +5,9 @@ This repository contains the code and data supporting the study *"Developmental 
 
 ## code
 
-**To reproduce Study1,2
+To reproduce Study1,2
 
-**To reproduce Study3
+To reproduce Study3
 
 ## dataset
 Includes all the data needed to run the code.  
